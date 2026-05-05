@@ -14,7 +14,6 @@
             -webkit-user-select: none;
             touch-action: manipulation;
         }
-
         body {
             background: #0d0d0d;
             display: flex;
@@ -24,7 +23,6 @@
             font-family: 'Courier New', monospace;
             overflow: hidden;
         }
-
         .game-wrapper {
             position: relative;
             width: 100%;
@@ -36,14 +34,12 @@
             overflow: hidden;
             box-shadow: 0 0 40px rgba(0,0,0,0.8);
         }
-
         canvas {
             display: block;
             width: 100%;
             height: 100%;
             image-rendering: pixelated;
         }
-
         .ui-overlay {
             position: absolute;
             top: 8px;
@@ -54,39 +50,36 @@
             pointer-events: none;
             z-index: 10;
         }
-
         .ui-panel {
             background: rgba(0,0,0,0.7);
             border: 2px solid #8b6914;
             border-radius: 8px;
             padding: 6px 10px;
             color: #f5e6d3;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             letter-spacing: 1px;
             backdrop-filter: blur(4px);
         }
-
         .bottom-panel {
             position: absolute;
             bottom: 8px;
             left: 8px;
             right: 8px;
             display: flex;
-            gap: 6px;
+            gap: 5px;
             z-index: 10;
             flex-wrap: wrap;
             justify-content: center;
         }
-
         .btn {
             background: rgba(0,0,0,0.75);
             border: 2px solid #8b6914;
             color: #f5e6d3;
-            padding: 8px 14px;
+            padding: 8px 12px;
             border-radius: 20px;
             font-family: 'Courier New', monospace;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             letter-spacing: 1px;
             cursor: pointer;
@@ -94,24 +87,11 @@
             transition: all 0.15s;
             pointer-events: auto;
         }
-
         .btn:active {
             background: #8b6914;
             color: #fff;
             transform: scale(0.95);
         }
-
-        .btn.highlight {
-            border-color: #f0c040;
-            background: rgba(240,192,64,0.2);
-            animation: pulse-btn 1.5s infinite;
-        }
-
-        @keyframes pulse-btn {
-            0%,100% { box-shadow: 0 0 5px #f0c04044; }
-            50% { box-shadow: 0 0 15px #f0c04088; }
-        }
-
         .dialog-box {
             position: absolute;
             bottom: 90px;
@@ -129,18 +109,15 @@
             gap: 10px;
             backdrop-filter: blur(6px);
         }
-
         .dialog-box.active {
             display: flex;
         }
-
         .dialog-buttons {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
             justify-content: flex-end;
         }
-
         .dialog-buttons .btn {
             font-size: 11px;
             padding: 6px 12px;
@@ -160,7 +137,8 @@
             <button class="btn" id="btnPlant">🌱 Сажать</button>
             <button class="btn" id="btnWater">💧 Полить</button>
             <button class="btn" id="btnHarvest">🧺 Собрать</button>
-            <button class="btn highlight" id="btnSell">💰 Продать</button>
+            <button class="btn" id="btnSell">💰 Продать</button>
+            <button class="btn" id="btnNextDay">⏩ День</button>
         </div>
 
         <div class="dialog-box" id="dialogBox">
@@ -170,651 +148,8 @@
     </div>
 
     <script>
-        // === НАСТРОЙКИ ===
         const CANVAS_WIDTH = 480;
         const CANVAS_HEIGHT = 850;
     </script>
 </body>
 </html>
-// === ХОЛСТ ===
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-canvas.width = CANVAS_WIDTH;
-canvas.height = CANVAS_HEIGHT;
-
-// === СОСТОЯНИЕ ИГРЫ ===
-const state = {
-    money: 50,
-    day: 1,
-    season: 0, // 0-весна, 1-лето, 2-осень, 3-зима
-    seasonNames: ['Весна', 'Лето', 'Осень', 'Зима'],
-    timeOfDay: 0, // 0-утро, 1-день, 2-вечер, 3-ночь
-    selectedTile: null,
-    dialogOpen: false,
-    npcAtDoor: null,
-    fertilizerActive: false,
-    fertilizerType: null,
-    totalEarned: 0,
-    totalHarvested: 0,
-    achievements: [],
-    prestigeBonus: 0,
-    autoWater: false,
-    hasScarecrow: false,
-    hasGreenhouse: false,
-    expandedBeds: false,
-};
-
-const beds = [];
-const BED_ROWS = 3;
-const BED_COLS = 4;
-const BED_START_X = 40;
-const BED_START_Y = 200;
-const BED_GAP_X = 110;
-const BED_GAP_Y = 90;
-
-function initBeds() {
-    beds.length = 0;
-    const cols = state.expandedBeds ? 5 : BED_COLS;
-    for (let row = 0; row < BED_ROWS; row++) {
-        for (let col = 0; col < cols; col++) {
-            beds.push({
-                row, col,
-                x: BED_START_X + col * BED_GAP_X,
-                y: BED_START_Y + row * BED_GAP_Y,
-                crop: null,
-                growthStage: 0,
-                daysPlanted: 0,
-                watered: false,
-                hasPest: false,
-            });
-        }
-    }
-}
-
-// === КУЛЬТУРЫ ===
-const crops = {
-    carrot:    { name: 'Морковь',   growDays: 2,  price: 8,  color: '#ff7b25', icon: '🥕', season: [0,1,2] },
-    wheat:     { name: 'Пшеница',   growDays: 3,  price: 12, color: '#d4a843', icon: '🌾', season: [0,1,2] },
-    pumpkin:   { name: 'Тыква',     growDays: 5,  price: 25, color: '#e8781a', icon: '🎃', season: [1,2] },
-    tomato:    { name: 'Помидор',   growDays: 3,  price: 15, color: '#e03a3a', icon: '🍅', season: [0,1] },
-    sunflower: { name: 'Подсолнух', growDays: 4,  price: 18, color: '#f5d742', icon: '🌻', season: [0,1] },
-    strawberry:{ name: 'Клубника',  growDays: 2,  price: 20, color: '#e8325a', icon: '🍓', season: [0,1] },
-    corn:      { name: 'Кукуруза',  growDays: 4,  price: 14, color: '#e8c840', icon: '🌽', season: [0,1,2] },
-    mushroom:  { name: 'Гриб',       growDays: 3,  price: 16, color: '#b8a080', icon: '🍄', season: [2,3] },
-    lavender:  { name: 'Лаванда',   growDays: 5,  price: 30, color: '#b088cc', icon: '💜', season: [0,1] },
-    goldroot:  { name: 'Зол.корень',growDays: 7,  price: 100, color: '#ffd700', icon: '✨', season: [0,1,2,3] },
-};
-
-// === ЖИВОТНЫЕ ===
-const animals = [
-    { type: 'chicken', x: 350, y: 420, vx: 0.3, vy: 0, timer: 0, product: 'egg', productName: 'Яйцо', price: 5 },
-    { type: 'chicken', x: 380, y: 440, vx: -0.25, vy: 0, timer: 0, product: 'egg', productName: 'Яйцо', price: 5 },
-    { type: 'cow', x: 340, y: 500, vx: 0.15, vy: 0, timer: 0, product: 'milk', productName: 'Молоко', price: 10 },
-    { type: 'sheep', x: 400, y: 520, vx: -0.2, vy: 0, timer: 0, product: 'wool', productName: 'Шерсть', price: 8 },
-];
-
-// === NPC ===
-const npcs = {
-    marta:    { name: 'Марта',    role: 'Торговка',   visitDay: 0 },
-    glasha:   { name: 'Глаша',    role: 'Соседка',    visitDay: 0 },
-    sidor:    { name: 'Сидор',    role: 'Банкир',     visitDay: 0 },
-    mira:     { name: 'Мира',     role: 'Колдунья',   visitDay: 0 },
-    postman:  { name: 'Почтальон',role: 'Почта',      visitDay: 0 },
-    foma:     { name: 'Фома',     role: 'Конкурент',  visitDay: 0 },
-    eremey:   { name: 'Еремей',   role: 'Помощник',   hired: false, cost: 30 },
-};
-
-// === РЫНОК ===
-let marketPrices = {};
-function updateMarket() {
-    for (let key in crops) {
-        const base = crops[key].price;
-        const fluctuation = 0.5 + Math.random() * 1.5;
-        marketPrices[key] = Math.floor(base * fluctuation);
-    }
-}
-
-// === КВЕСТЫ ===
-const quests = [];
-function generateQuest() {
-    const cropKeys = Object.keys(crops);
-    const targetCrop = cropKeys[Math.floor(Math.random() * cropKeys.length)];
-    const amount = 2 + Math.floor(Math.random() * 4);
-    const reward = crops[targetCrop].price * amount * 2;
-    quests.push({
-        crop: targetCrop,
-        cropName: crops[targetCrop].name,
-        amount,
-        progress: 0,
-        reward,
-        done: false,
-    });
-    if (quests.length > 3) quests.shift();
-}
-
-// === ИНИЦИАЛИЗАЦИЯ ===
-function initGame() {
-    initBeds();
-    updateMarket();
-    generateQuest();
-    npcs.marta.visitDay = 1 + Math.floor(Math.random() * 3);
-    npcs.glasha.visitDay = 2 + Math.floor(Math.random() * 3);
-    npcs.postman.visitDay = 3 + Math.floor(Math.random() * 4);
-}
-initGame();
-      // === ОТРИСОВКА ===
-const seasonColors = [
-    { sky: '#87ceeb', ground: '#6b8e23', tree: '#3d6b1e' }, // весна
-    { sky: '#4a90d9', ground: '#7caa2a', tree: '#2d5a14' }, // лето
-    { sky: '#c4956a', ground: '#b8843c', tree: '#8b4513' }, // осень
-    { sky: '#b0c4de', ground: '#e8e8e8', tree: '#5a5a5a' }, // зима
-];
-
-const timeColors = [
-    { skyMod: 1.0, label: 'Утро' },
-    { skyMod: 1.0, label: 'День' },
-    { skyMod: 0.6, label: 'Вечер' },
-    { skyMod: 0.25, label: 'Ночь' },
-];
-
-function drawSky() {
-    const sc = seasonColors[state.season];
-    const tc = timeColors[state.timeOfDay];
-    const r = parseInt(sc.sky.slice(1,3), 16) * tc.skyMod;
-    const g = parseInt(sc.sky.slice(3,5), 16) * tc.skyMod;
-    const b = parseInt(sc.sky.slice(5,7), 16) * tc.skyMod;
-    const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    grad.addColorStop(0, `rgb(${Math.floor(r)},${Math.floor(g)},${Math.floor(b)})`);
-    grad.addColorStop(0.6, `rgb(${Math.floor(r*0.7)},${Math.floor(g*0.7)},${Math.floor(b*0.7)})`);
-    grad.addColorStop(1, sc.ground);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // солнце/луна
-    if (state.timeOfDay < 3) {
-        ctx.fillStyle = state.timeOfDay < 2 ? '#fff8c0' : '#e8e0d0';
-        ctx.beginPath();
-        ctx.arc(400, 70, 35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = state.timeOfDay < 2 ? '#fffbe8' : '#d0c8b8';
-        ctx.beginPath();
-        ctx.arc(400, 70, 45, 0, Math.PI * 2);
-        ctx.globalAlpha = 0.3;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-    // звёзды ночью
-    if (state.timeOfDay === 3) {
-        ctx.fillStyle = '#ffffff';
-        for (let i = 0; i < 30; i++) {
-            const sx = (i * 137 + 50) % CANVAS_WIDTH;
-            const sy = (i * 97 + 20) % 200;
-            ctx.fillRect(sx, sy, 2, 2);
-        }
-    }
-}
-
-function drawGround() {
-    const sc = seasonColors[state.season];
-    ctx.fillStyle = sc.ground;
-    ctx.fillRect(0, 160, CANVAS_WIDTH, CANVAS_HEIGHT - 160);
-
-    // текстура травы
-    const grassColor = state.season === 3 ? '#d8d8d8' : '#5a8a2a';
-    for (let i = 0; i < 80; i++) {
-        const gx = (i * 173 + 30) % CANVAS_WIDTH;
-        const gy = 170 + (i * 89 + 20) % (CANVAS_HEIGHT - 200);
-        ctx.fillStyle = grassColor;
-        ctx.globalAlpha = 0.4;
-        ctx.fillRect(gx, gy, 4, 6);
-    }
-    ctx.globalAlpha = 1;
-}
-
-function drawHouse() {
-    // дом
-    ctx.fillStyle = '#8b6b4a';
-    ctx.fillRect(20, 80, 140, 100);
-    ctx.fillStyle = '#6b4520';
-    ctx.fillRect(20, 140, 140, 40);
-    // крыша
-    ctx.fillStyle = '#c44a2a';
-    ctx.beginPath();
-    ctx.moveTo(10, 80);
-    ctx.lineTo(90, 30);
-    ctx.lineTo(170, 80);
-    ctx.fill();
-    // дверь
-    ctx.fillStyle = '#5a3010';
-    ctx.fillRect(75, 120, 30, 60);
-    // окна
-    ctx.fillStyle = '#aad4f0';
-    ctx.fillRect(35, 100, 22, 22);
-    ctx.fillRect(120, 100, 22, 22);
-    // труба + дым
-    ctx.fillStyle = '#6b4a30';
-    ctx.fillRect(120, 40, 18, 40);
-    if (state.timeOfDay < 3) {
-        ctx.fillStyle = '#cccccc';
-        ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 500) * 0.3;
-        ctx.beginPath();
-        ctx.arc(129, 30, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(135, 20, 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
-}
-
-function drawBarn() {
-    ctx.fillStyle = '#8b4a3a';
-    ctx.fillRect(330, 380, 120, 80);
-    ctx.fillStyle = '#6b2a1a';
-    ctx.fillRect(330, 430, 120, 30);
-    ctx.fillStyle = '#7a3a2a';
-    ctx.beginPath();
-    ctx.moveTo(320, 380);
-    ctx.lineTo(390, 330);
-    ctx.lineTo(460, 380);
-    ctx.fill();
-    ctx.fillStyle = '#4a1a0a';
-    ctx.fillRect(375, 400, 30, 60);
-}
-
-function drawBeds() {
-    for (const bed of beds) {
-        // почва
-        const soilColor = bed.watered ? '#5a3a1a' : '#7a5a3a';
-        ctx.fillStyle = soilColor;
-        ctx.fillRect(bed.x, bed.y, 70, 50);
-        ctx.strokeStyle = '#4a2a0a';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bed.x, bed.y, 70, 50);
-
-        // вредитель
-        if (bed.hasPest) {
-            ctx.fillStyle = '#ff3333';
-            ctx.font = '18px serif';
-            ctx.fillText('🐛', bed.x + 20, bed.y + 30);
-        }
-
-        // растение
-        if (bed.crop) {
-            const cropData = crops[bed.crop];
-            const stages = ['🌱', '🌿', '🪴', cropData.icon];
-            const stageIdx = Math.min(bed.growthStage, 3);
-            ctx.font = '28px serif';
-            ctx.fillText(stages[stageIdx], bed.x + 18, bed.y + 38);
-
-            // индикатор готовности
-            if (bed.growthStage >= cropData.growDays) {
-                ctx.strokeStyle = '#ffd700';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([3, 3]);
-                ctx.strokeRect(bed.x - 2, bed.y - 2, 74, 54);
-                ctx.setLineDash([]);
-            }
-        }
-    }
-}
-
-function drawFence() {
-    ctx.strokeStyle = '#8b6b4a';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(20, 170);
-    ctx.lineTo(460, 170);
-    ctx.moveTo(20, 170);
-    ctx.lineTo(20, 650);
-    ctx.lineTo(460, 650);
-    ctx.lineTo(460, 170);
-    ctx.stroke();
-    // столбики
-    for (let fx = 20; fx <= 460; fx += 40) {
-        ctx.fillStyle = '#6b4a2a';
-        ctx.fillRect(fx - 2, 165, 5, 15);
-    }
-}
-
-function drawWell() {
-    ctx.fillStyle = '#8a7a6a';
-    ctx.fillRect(190, 370, 40, 50);
-    ctx.fillStyle = '#6a5a4a';
-    ctx.fillRect(185, 365, 50, 10);
-    ctx.fillRect(195, 360, 5, 10);
-    ctx.fillRect(220, 360, 5, 10);
-    ctx.fillStyle = '#4a8aaa';
-    ctx.fillRect(200, 390, 20, 30);
-}
-
-function drawScarecrow() {
-    if (!state.hasScarecrow) return;
-    const sx = 430;
-    const sy = 280;
-    ctx.fillStyle = '#7a5a3a';
-    ctx.fillRect(sx - 3, sy, 6, 40);
-    ctx.fillRect(sx - 10, sy + 5, 20, 3);
-    ctx.fillStyle = '#c4a44a';
-    ctx.beginPath();
-    ctx.arc(sx, sy - 5, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(sx - 3, sy - 8, 2, 3);
-    ctx.fillRect(sx + 2, sy - 8, 2, 3);
-    ctx.fillRect(sx - 2, sy - 3, 5, 2);
-}
-
-function drawAnimals() {
-    for (const animal of animals) {
-        animal.x += animal.vx;
-        if (animal.x > 440 || animal.x < 310) animal.vx *= -1;
-        animal.timer += 0.01;
-
-        if (animal.type === 'chicken') {
-            ctx.fillStyle = '#f5e6d3';
-            ctx.beginPath();
-            ctx.arc(animal.x, animal.y, 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#e8a020';
-            ctx.beginPath();
-            ctx.moveTo(animal.x - 4, animal.y - 8);
-            ctx.lineTo(animal.x, animal.y - 12);
-            ctx.lineTo(animal.x + 4, animal.y - 8);
-            ctx.fill();
-        } else if (animal.type === 'cow') {
-            ctx.fillStyle = '#f8f0e0';
-            ctx.fillRect(animal.x - 15, animal.y - 10, 30, 22);
-            ctx.fillStyle = '#e8d8c8';
-            ctx.fillRect(animal.x - 12, animal.y - 16, 8, 8);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(animal.x - 11, animal.y - 14, 2, 2);
-            ctx.fillStyle = '#f0c8c8';
-            ctx.fillRect(animal.x - 14, animal.y - 6, 4, 3);
-            ctx.fillRect(animal.x + 10, animal.y - 6, 4, 3);
-        } else if (animal.type === 'sheep') {
-            ctx.fillStyle = '#f0f0f0';
-            ctx.beginPath();
-            ctx.arc(animal.x, animal.y, 14, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#d0c8c0';
-            ctx.beginPath();
-            ctx.arc(animal.x - 8, animal.y - 10, 6, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-}
-
-function drawFarmer() {
-    const fx = 90;
-    const fy = 540;
-    // тело
-    ctx.fillStyle = '#4a8a3a';
-    ctx.fillRect(fx - 8, fy, 16, 22);
-    // голова
-    ctx.fillStyle = '#f5d5b8';
-    ctx.beginPath();
-    ctx.arc(fx, fy - 6, 10, 0, Math.PI * 2);
-    ctx.fill();
-    // шляпа
-    ctx.fillStyle = '#7a5a3a';
-    ctx.fillRect(fx - 14, fy - 18, 28, 6);
-    ctx.fillRect(fx - 9, fy - 26, 18, 12);
-    // ноги
-    ctx.fillStyle = '#3a5a2a';
-    ctx.fillRect(fx - 8, fy + 22, 7, 10);
-    ctx.fillRect(fx + 1, fy + 22, 7, 10);
-}
-
-function drawParticles() {
-    // пусто, добавим позже
-}
-
-function drawUI() {
-    document.getElementById('moneyDisplay').textContent = `🪙 ${state.money}`;
-    document.getElementById('dayDisplay').textContent =
-        `${timeColors[state.timeOfDay].label} · День ${state.day} · ${state.seasonNames[state.season]}`;
-}
-
-function render() {
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    drawSky();
-    drawGround();
-    drawFence();
-    drawHouse();
-    drawBarn();
-    drawWell();
-    drawScarecrow();
-    drawBeds();
-    drawAnimals();
-    drawFarmer();
-    drawParticles();
-    drawUI();
-    requestAnimationFrame(render);
-}
-
-render();
-          // === ДЕЙСТВИЯ ===
-function getBedAt(x, y) {
-    for (const bed of beds) {
-        if (x >= bed.x && x <= bed.x + 70 && y >= bed.y && y <= bed.y + 50) {
-            return bed;
-        }
-    }
-    return null;
-}
-
-function nextDay() {
-    state.day++;
-    // сброс полива
-    for (const bed of beds) {
-        if (!state.autoWater) bed.watered = false;
-        else bed.watered = true;
-        // рост
-        if (bed.crop && bed.watered) {
-            bed.daysPlanted++;
-            bed.growthStage = bed.daysPlanted;
-        }
-        // засуха
-        if (bed.crop && !bed.watered && bed.daysPlanted > 0) {
-            bed.daysPlanted = Math.max(0, bed.daysPlanted - 0.5);
-            bed.growthStage = Math.floor(bed.daysPlanted);
-        }
-        // случайный вредитель
-        if (bed.crop && Math.random() < 0.15 && !state.hasScarecrow) {
-            bed.hasPest = true;
-        }
-    }
-    // животные продукты
-    for (const animal of animals) {
-        animal.timer += 0.5;
-    }
-    // рынок
-    if (state.day % 2 === 0) updateMarket();
-    // NPC визиты
-    if (state.day === npcs.marta.visitDay) state.npcAtDoor = 'marta';
-    else if (state.day === npcs.glasha.visitDay) state.npcAtDoor = 'glasha';
-    else if (state.day === npcs.postman.visitDay) state.npcAtDoor = 'postman';
-    else state.npcAtDoor = null;
-
-    if (state.npcAtDoor) showNPCDialog(state.npcAtDoor);
-
-    // время суток
-    state.timeOfDay = (state.timeOfDay + 1) % 4;
-    if (state.timeOfDay === 0) {
-        state.season = (state.season + 1) % 4;
-    }
-}
-
-function plantCrop(bed, cropKey) {
-    if (bed.crop) return false;
-    if (!crops[cropKey].season.includes(state.season) && !state.hasGreenhouse) return false;
-    const seedCost = Math.floor(crops[cropKey].price * 0.4);
-    if (state.money < seedCost) return false;
-    state.money -= seedCost;
-    bed.crop = cropKey;
-    bed.growthStage = 0;
-    bed.daysPlanted = 0;
-    bed.watered = true;
-    bed.hasPest = false;
-    return true;
-}
-
-function waterBed(bed) {
-    bed.watered = true;
-}
-
-function harvestBed(bed) {
-    if (!bed.crop) return null;
-    const cropData = crops[bed.crop];
-    if (bed.growthStage < cropData.growDays) return null;
-    const price = marketPrices[bed.crop] || cropData.price;
-    const bonus = state.prestigeBonus > 0 ? Math.floor(price * state.prestigeBonus * 0.1) : 0;
-    const total = price + bonus;
-    const cropName = cropData.name;
-    bed.crop = null;
-    bed.growthStage = 0;
-    bed.daysPlanted = 0;
-    bed.watered = false;
-    bed.hasPest = false;
-    state.totalHarvested++;
-    // квесты
-    for (const q of quests) {
-        if (!q.done && q.crop === cropKey) {
-            q.progress++;
-            if (q.progress >= q.amount) {
-                q.done = true;
-                state.money += q.reward;
-                showToast(`Квест выполнен! +${q.reward} 🪙`);
-            }
-        }
-    }
-    return { name: cropName, price: total, cropKey: bed.crop };
-}
-
-function killPest(bed) {
-    bed.hasPest = false;
-    state.money += 2;
-}
-
-// === ДИАЛОГИ ===
-function showNPCDialog(npcKey) {
-    const npc = npcs[npcKey];
-    state.dialogOpen = true;
-    const box = document.getElementById('dialogBox');
-    const text = document.getElementById('dialogText');
-    const btns = document.getElementById('dialogButtons');
-    box.classList.add('active');
-    btns.innerHTML = '';
-
-    if (npcKey === 'marta') {
-        text.textContent = `Марта: Привет, фермер! Куплю твой урожай по рыночной цене. Продаём?`;
-        btns.innerHTML = `<button class="btn" onclick="sellAllToMarta()">💰 Продать всё</button>
-                          <button class="btn" onclick="closeDialog()">👋 Потом</button>`;
-    } else if (npcKey === 'glasha') {
-        if (quests.length > 0 && !quests[0].done) {
-            const q = quests[0];
-            text.textContent = `Глаша: Вырасти ${q.amount} ${q.cropName} — получишь ${q.reward} 🪙!`;
-        } else {
-            text.textContent = `Глаша: Отличная работа, фермер! Новых квестов пока нет.`;
-        }
-        btns.innerHTML = `<button class="btn" onclick="closeDialog()">👋 Ладно</button>`;
-    } else if (npcKey === 'postman') {
-        state.money += 5;
-        text.textContent = `Почтальон: Тебе посылка! Внутри 5 🪙. Хорошего дня!`;
-        btns.innerHTML = `<button class="btn" onclick="closeDialog()">📬 Спасибо</button>`;
-    }
-}
-
-function closeDialog() {
-    state.dialogOpen = false;
-    state.npcAtDoor = null;
-    document.getElementById('dialogBox').classList.remove('active');
-}
-
-function sellAllToMarta() {
-    let totalSold = 0;
-    for (const bed of beds) {
-        if (bed.crop && bed.growthStage >= crops[bed.crop].growDays) {
-            const result = harvestBed(bed);
-            if (result) {
-                totalSold += result.price;
-            }
-        }
-    }
-    state.money += totalSold;
-    showToast(`Продано на ${totalSold} 🪙`);
-    closeDialog();
-}
-
-function showToast(msg) {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-        position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
-        background: rgba(0,0,0,0.85); color: #ffd700; padding: 8px 16px;
-        border-radius: 20px; z-index: 30; font-size: 13px; pointer-events: none;
-        transition: opacity 0.5s; font-family: 'Courier New', monospace;
-    `;
-    toast.textContent = msg;
-    document.getElementById('gameWrapper').appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 1500);
-}
-
-// === ОБРАБОТЧИКИ КЛИКОВ ===
-canvas.addEventListener('click', (e) => {
-    if (state.dialogOpen) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_WIDTH / rect.width;
-    const scaleY = CANVAS_HEIGHT / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const bed = getBedAt(x, y);
-    if (bed) state.selectedTile = bed;
-});
-
-document.getElementById('btnPlant').addEventListener('click', () => {
-    if (!state.selectedTile) { showToast('Выбери грядку!'); return; }
-    const cropKeys = Object.keys(crops).filter(k => crops[k].season.includes(state.season) || state.hasGreenhouse);
-    const crop = cropKeys[Math.floor(Math.random() * cropKeys.length)];
-    if (plantCrop(state.selectedTile, crop)) {
-        showToast(`Посажено: ${crops[crop].name}`);
-    } else {
-        showToast('Нельзя посадить!');
-    }
-});
-
-document.getElementById('btnWater').addEventListener('click', () => {
-    if (!state.selectedTile) { showToast('Выбери грядку!'); return; }
-    waterBed(state.selectedTile);
-    showToast('Полито 💧');
-});
-
-document.getElementById('btnHarvest').addEventListener('click', () => {
-    if (!state.selectedTile) { showToast('Выбери грядку!'); return; }
-    if (state.selectedTile.hasPest) {
-        killPest(state.selectedTile);
-        showToast('Жук прогнан! 🐛💥');
-        return;
-    }
-    const result = harvestBed(state.selectedTile);
-    if (result) {
-        state.money += result.price;
-        showToast(`Собрано: ${result.name} (+${result.price} 🪙)`);
-    } else {
-        showToast('Ещё не выросло!');
-    }
-});
-
-document.getElementById('btnSell').addEventListener('click', () => {
-    sellAllToMarta();
-});
-
-// Кнопка следующего дня (добавим в bottomPanel)
-const nextDayBtn = document.createElement('button');
-nextDayBtn.className = 'btn';
-nextDayBtn.textContent = '⏩ День';
-nextDayBtn.addEventListener('click', () => {
-    nextDay();
-    showToast(`День ${state.day} · ${state.seasonNames[state.season]}`);
-});
-document.getElementById('bottomPanel').appendChild(nextDayBtn);
